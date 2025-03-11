@@ -73,8 +73,8 @@ for service in $(systemctl list-units --type=service --state=running --no-legend
                 kill -9 "$pid"
 
                 # Delete binary
-                echo "Deleting binary: $binary_path"
-                rm -f "$binary_path"
+                echo "Moving binary to quarantine: $binary_path"
+                mv "$binary_path" "QUARANTINE_DIR"
             fi
         fi
     fi
@@ -132,6 +132,6 @@ for binary in "${FOUND_BINARIES[@]}"; do
     done
 
     # Delete the binary
-    echo "Deleting binary: $binary"
-    rm -f "$binary"
+    echo "Moving binary to quaranting: $binary"
+    mv "$binary" "QUARANTINE_DIR"
 done
