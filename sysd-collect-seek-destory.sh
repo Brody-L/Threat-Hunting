@@ -6,98 +6,82 @@ mkdir -p "$QUARANTINE_DIR"
 
 # Function to collect artifacts
 collect_artifacts() {
-    local service_name="$1"
-    local binary_path="$2"
-    local pids=("${!3}") # Array of PIDs
-    local services=("${!4}") # Array of services
+    local pid="$1"
+    local service_name="$2"
+    local binary_path="$3"
+    local cmdline="$4"
+    local established="$5"
     local filename="$QUARANTINE_DIR/$service_name.txt"
 
     {
         echo "Timestamp: $(date "+%Y-%m-%d %H:%M:%S")"
         echo "=============================="
+        echo "Service: $service_name"
+        echo "PID: $pid"
         echo "Binary Path: $binary_path"
+        echo "Command Line: $cmdline"
         echo "------------------------------"
-        echo "Process Information:"
-        for pid in "${pids[@]}"; do
-            echo "PID: $pid"
-            echo "Command Line: $(cat /proc/$pid/cmdline | tr '\0' ' ')"
-            echo "------------------------------"
-            echo "Network Connections for PID $pid:"
-            ss -tnp | grep "pid=$pid" || echo "No network connections."
-            echo "------------------------------"
-        done
-
-        # Collect systemd service information
-        if [ "${#services[@]}" -gt 0 ]; then
-            echo "Systemd Services using this binary:"
-            for service in "${services[@]}"; do
-                echo "Service: $service"
-                systemctl show "$service"
-                echo "------------------------------"
-            done
-        else
-            echo "No systemd services found for this binary."
-        fi
-
+        echo "Established Connections:"
+        echo "$established"
+        echo "------------------------------"
+        echo "Systemd Service Details:"
+        systemctl show "$service_name"
+        echo "------------------------------"
         echo "Actions Taken:"
         echo "✅ Binary deleted"
-        echo "✅ Services stopped and disabled"
-        echo "✅ Processes killed"
+        echo "✅ Service stopped and disabled"
+        echo "✅ Process killed"
         echo "✅ Network connections confirmed closed"
     } > "$filename"
 
     echo "Artifacts collected in: $filename"
 }
 
-# Step 1: Identify running services and delete their binaries
-echo "Step 1: Finding running services and their binaries..."
+# Step 1: Systemd Service Check and Binary Deletion
+echo "Checking running systemd services..."
 
-SERVICES_FOUND=()
+for service in $(systemctl list-units --type=service --state=running --no-legend | awk '{print $1}'); do
+    # Get the PID of the service
+    pid=$(systemctl show -p MainPID "$service" | cut -d'=' -f2)
 
-while IFS= read -r service; do
-    if [[ -n "$service" ]]; then
-        SERVICES_FOUND+=("$service")
+    if [[ "$pid" != "0" && -d "/proc/$pid" ]]; then
+        # Get the binary path
+        binary_path=$(readlink -f /proc/$pid/exe)
+
+        if [[ -f "$binary_path" ]]; then
+            # Check for established network connections
+            established=$(ss -tnp | grep "pid=$pid")
+
+            if [[ -n "$established" ]]; then
+                # Get command line arguments
+                cmdline=$(cat /proc/$pid/cmdline | tr '\0' ' ')
+                echo "Processing service: $service"
+                echo "Command Line: $cmdline"
+                echo "Established Connections:"
+                echo "$established"
+
+                # Collect artifacts
+                collect_artifacts "$pid" "$service" "$binary_path" "$cmdline" "$established"
+
+                # Stop and disable the service
+                echo "Stopping and disabling service: $service"
+                systemctl stop "$service"
+                systemctl disable "$service"
+
+                # Kill the process
+                echo "Killing process with PID: $pid"
+                kill -9 "$pid"
+
+                # Delete binary
+                echo "Deleting binary: $binary_path"
+                rm -f "$binary_path"
+            fi
+        fi
     fi
-done < <(systemctl list-units --type=service --state=running --no-legend | awk '{print $1}')
-
-for service in "${SERVICES_FOUND[@]}"; do
-    echo "Processing service: $service"
-
-    # Get binary used by the service
-    BINARY_PATH=$(systemctl show "$service" --property=ExecStart | cut -d= -f2 | awk '{print $1}' | tr -d '"')
-
-    if [[ -z "$BINARY_PATH" || ! -f "$BINARY_PATH" ]]; then
-        echo "No valid binary found for $service. Skipping..."
-        continue
-    fi
-
-    echo "Binary used by service: $BINARY_PATH"
-
-    # Find PIDs using this binary
-    PIDS=($(pgrep -f "$BINARY_PATH"))
-    echo "Processes found: ${PIDS[*]:-None}"
-
-    # Collect artifacts
-    collect_artifacts "$service" "$BINARY_PATH" PIDS[@] SERVICES_FOUND[@]
-
-    # Stop and disable service
-    echo "Stopping and disabling service: $service"
-    systemctl stop "$service"
-    systemctl disable "$service"
-
-    # Kill processes
-    for pid in "${PIDS[@]}"; do
-        echo "Killing process with PID: $pid"
-        kill -9 "$pid"
-    done
-
-    # Delete binary
-    echo "Deleting binary: $BINARY_PATH"
-    rm -f "$BINARY_PATH"
 done
 
-# Step 2: Find suspicious binaries and handle them
-echo "Step 2: Finding suspicious binaries..."
+# Step 2: Identify Suspicious Binaries and Handle Them
+echo "Finding suspicious binaries..."
 
 FOUND_BINARIES=()
 
@@ -132,7 +116,7 @@ for binary in "${FOUND_BINARIES[@]}"; do
     echo "Systemd Services using this binary: ${SERVICES[*]:-None}"
 
     # Collect artifacts
-    collect_artifacts "$SERVICE_NAME" "$binary" PIDS[@] SERVICES[@]
+    collect_artifacts "${PIDS[0]:-N/A}" "$SERVICE_NAME" "$binary" "N/A" "N/A"
 
     # Stop and disable services
     for service in "${SERVICES[@]}"; do
@@ -151,5 +135,3 @@ for binary in "${FOUND_BINARIES[@]}"; do
     echo "Deleting binary: $binary"
     rm -f "$binary"
 done
-
-echo "Step 1 and Step 2 completed successfully."
