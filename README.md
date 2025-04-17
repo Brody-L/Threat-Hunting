@@ -1,7 +1,12 @@
 # Collection of Linux Persistence Hunting Scripts
 
 ## audit-ko.sh
-Compares `ls` output on kernel object directories to debugfs output to find hidden files. 
+Compares `ls` output on kernel object directories to debugfs output to find hidden files. Use this if you suspect a Linux Kernel Module rootkit that may be hiding with a magic prefix. 
+
+Check the output for a non-zero value to determine if the kernel is tainted (may indicate a potential LKM rootkit): 
+```bash
+cat /proc/sys/kernel/tainted
+```
 
 ## audit-services.sh
 Checks systemd services against dpkg -S and snap to find unowned services that may be malicious. Could have false postives. 
