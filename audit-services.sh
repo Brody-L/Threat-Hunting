@@ -5,7 +5,17 @@ snap_services=$(snap services 2>/dev/null | awk 'NR>1 {print $1}')
 snap_packages=$(snap list 2>/dev/null | awk 'NR>1 {print $1}')
 
 # Directories to search recursively
-dirs=("/etc/systemd/system" "/lib/systemd/system")
+dirs=(
+    "/run/systemd/system/"
+    "/etc/systemd/system/"
+    "/etc/systemd/user/"
+    "/usr/local/lib/systemd/system/"
+    "/lib/systemd/system/"
+    "/usr/lib/systemd/system/"
+    "/usr/lib/systemd/user/"
+    "$HOME/.config/systemd/user/"
+    "$HOME/.local/share/systemd/user/"
+)
 
 echo
 echo "[*] Auditing systemd service files for suspicious entries..."
@@ -25,8 +35,21 @@ for dir in "${dirs[@]}"; do
             fi
         fi
 
-        # Check if file is part of a package
-        if ! dpkg -S "$service" &>/dev/null; then
+    # Check if file is part of a package
+    if ! dpkg -S "$service" &>/dev/null; then
+        # Check if the same service file exists in another known systemd path
+        found_alt=0
+        for alt in "/usr/lib/systemd/system" "/lib/systemd/system" "/etc/systemd/system"; do
+            alt_path="$alt/$(basename "$service")"
+            if [[ "$alt_path" != "$service" && -f "$alt_path" ]]; then
+                if dpkg -S "$alt_path" &>/dev/null; then
+                    found_alt=1
+                    break
+                fi
+            fi
+        done
+
+        if [[ "$found_alt" -eq 0 ]]; then
             echo "[!] Unpackaged service: $service"
             ls -lc "$service" | awk '{print "    Last status change: "$6, $7, $8}'
 
@@ -36,5 +59,6 @@ for dir in "${dirs[@]}"; do
             fi
             echo
         fi
-    done
+    fi
+  done
 done
