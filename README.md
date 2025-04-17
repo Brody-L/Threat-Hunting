@@ -11,7 +11,7 @@ Check the output for a non-zero value to determine if the kernel is tainted (may
 ## audit-services.sh
 Checks systemd services against dpkg -S and snap to find unowned services that may be malicious. Could have false postives. 
 
-## sysd-collect-seek-destroy.sh
+## sysd-net.sh
 - Identifies systemd services with ESTABLISHED or LISTEN connection states
 - Gathers details about the service and the script or binary in ExecStart=
 - Stops and Disables the service
