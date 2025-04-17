@@ -15,5 +15,6 @@ Checks systemd services against dpkg -S and snap to find unowned services that m
 - Identifies systemd services with ESTABLISHED or LISTEN connection states
 - Gathers details about the service and the script or binary in ExecStart=
 - Stops and Disables the service
-- Moves the service to /quarantine/Systemd-Persistence
-- Includes extensive details about the service
+- Kills processes associated with the service
+- Moves the service and associated script/binary to /quarantine/Systemd-Persistence 
+- Includes details about the service
